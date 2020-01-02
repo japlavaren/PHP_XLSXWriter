@@ -314,7 +314,7 @@ class XLSXWriter
 		$max_cell = self::xlsCell($sheet->row_count - 1, count($sheet->columns) - 1);
 
 		if ($sheet->auto_filter) {
-			$sheet->file_writer->write(    '<autoFilter ref="A1:' . $max_cell . '"/>');			
+			$sheet->file_writer->write(    '<autoFilter ref="A' . $sheet->auto_filter . ':' . $max_cell . '"/>');
 		}
 
 		$sheet->file_writer->write(    '<printOptions headings="false" gridLines="false" gridLinesSet="true" horizontalCentered="false" verticalCentered="false"/>');
@@ -672,7 +672,7 @@ class XLSXWriter
 		foreach($this->sheets as $sheet_name=>$sheet) {
 			if ($sheet->auto_filter) {
 				$sheetname = self::sanitize_sheetname($sheet->sheetname);
-				$workbook_xml.='<definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">\''.self::xmlspecialchars($sheetname).'\'!$A$1:' . self::xlsCell($sheet->row_count - 1, count($sheet->columns) - 1, true) . '</definedName>';
+				$workbook_xml.='<definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">\''.self::xmlspecialchars($sheetname).'\'!$A$' . $sheet->auto_filter . ':' . self::xlsCell($sheet->row_count - 1, count($sheet->columns) - 1, true) . '</definedName>';
 				$i++;	
 			}
 		}
