@@ -207,6 +207,13 @@ class XLSXWriter
 		return $column_types;
 	}
 
+    public function setSheetColumnTypes($sheetName, array $types)
+    {
+        $this->initializeSheet($sheetName);
+        $sheet = &$this->sheets[$sheetName];
+        $sheet->columns = $this->initializeColumnTypes($types);
+    }
+
 	public function writeSheetHeader($sheet_name, array $header_types, $col_options = null)
 	{
 		if (empty($sheet_name) || empty($header_types) || !empty($this->sheets[$sheet_name]))
