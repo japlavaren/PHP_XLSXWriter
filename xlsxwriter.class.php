@@ -25,6 +25,9 @@ class XLSXWriter
 	protected $temp_files = array();
 	protected $cell_styles = array();
 	protected $number_formats = array();
+	protected $number_format_style_idxs = array();
+
+	protected static $col_numbers = array();
 
 	public function __construct()
 	{
@@ -187,9 +190,14 @@ class XLSXWriter
 
 	private function addCellStyle($number_format, $cell_style_string)
 	{
+		$key = $number_format . $cell_style_string;
+		if (isset($this->number_format_style_idxs[$key])) {
+			return $this->number_format_style_idxs[$key];
+		}
 		$number_format_idx = self::add_to_list_get_index($this->number_formats, $number_format);
 		$lookup_string = $number_format_idx.";".$cell_style_string;
 		$cell_style_idx = self::add_to_list_get_index($this->cell_styles, $lookup_string);
+		$this->number_format_style_idxs[$key] = $cell_style_idx;
 		return $cell_style_idx;
 	}
 
@@ -728,9 +736,14 @@ class XLSXWriter
 	 * */
 	public static function xlsCell($row_number, $column_number, $absolute=false)
 	{
-		$n = $column_number;
-		for($r = ""; $n >= 0; $n = intval($n / 26) - 1) {
-			$r = chr($n%26 + 0x41) . $r;
+		if (isset(self::$col_numbers[$column_number])) {
+			$r = self::$col_numbers[$column_number];
+		} else {
+        		$n = $column_number;
+			for($r = ""; $n >= 0; $n = intval($n / 26) - 1) {
+				$r = chr($n%26 + 0x41) . $r;
+			}
+			self::$col_numbers[$column_number] = $r;
 		}
 		if ($absolute) {
 			return '$' . $r . '$' . ($row_number+1);
