@@ -19,7 +19,7 @@ class XLSXWriter
 	protected $company;
 	protected $description;
 	protected $keywords = array();
-	
+
 	protected $current_sheet;
 	protected $sheets = array();
 	protected $temp_files = array();
@@ -117,7 +117,7 @@ class XLSXWriter
 		$zip->close();
 	}
 
-	protected function initializeSheet($sheet_name, $col_widths=array(), $auto_filter=false, $freeze_rows=false, $freeze_columns=false )
+	protected function initializeSheet($sheet_name, $col_widths=array(), $auto_filter=false, $freeze_rows=false, $freeze_columns=false, $max_cell=null)
 	{
 		//if already initialized
 		if ($this->current_sheet==$sheet_name || isset($this->sheets[$sheet_name]))
@@ -133,6 +133,7 @@ class XLSXWriter
 			'file_writer' => new XLSXWriter_BuffererWriter($sheet_filename),
 			'columns' => array(),
 			'merge_cells' => array(),
+			'max_cell' => (bool)$max_cell,
 			'max_cell_tag_start' => 0,
 			'max_cell_tag_end' => 0,
 			'auto_filter' => $auto_filter,
@@ -143,15 +144,22 @@ class XLSXWriter
 		$rightToLeftValue = $this->isRightToLeft ? 'true' : 'false';
 		$sheet = &$this->sheets[$sheet_name];
 		$tabselected = count($this->sheets) == 1 ? 'true' : 'false';//only first sheet is selected
-		$max_cell=XLSXWriter::xlsCell(self::EXCEL_2007_MAX_ROW, self::EXCEL_2007_MAX_COL);//XFE1048577
 		$sheet->file_writer->write('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n");
 		$sheet->file_writer->write('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">');
 		$sheet->file_writer->write(  '<sheetPr filterMode="false">');
 		$sheet->file_writer->write(    '<pageSetUpPr fitToPage="false"/>');
 		$sheet->file_writer->write(  '</sheetPr>');
-		$sheet->max_cell_tag_start = $sheet->file_writer->ftell();
-		$sheet->file_writer->write('<dimension ref="A1:' . $max_cell . '"/>');
-		$sheet->max_cell_tag_end = $sheet->file_writer->ftell();
+
+		// write max cell value when defined. if not use placeholder to be replaced later as designed originally
+		if ($max_cell) {
+			$sheet->file_writer->write('<dimension ref="A1:' . $max_cell . '"/>');
+		} else {
+			$max_cell = XLSXWriter::xlsCell(self::EXCEL_2007_MAX_ROW, self::EXCEL_2007_MAX_COL);//XFE1048577
+			$sheet->max_cell_tag_start = $sheet->file_writer->ftell();
+			$sheet->file_writer->write('<dimension ref="A1:' . $max_cell . '"/>');
+			$sheet->max_cell_tag_end = $sheet->file_writer->ftell();
+		}
+
 		$sheet->file_writer->write(  '<sheetViews>');
 		$sheet->file_writer->write(    '<sheetView colorId="64" defaultGridColor="true" rightToLeft="'.$rightToLeftValue.'" showFormulas="false" showGridLines="true" showOutlineSymbols="true" showRowColHeaders="true" showZeros="true" tabSelected="' . $tabselected . '" topLeftCell="A1" view="normal" windowProtection="false" workbookViewId="0" zoomScale="100" zoomScaleNormal="100" zoomScalePageLayoutView="100">');
 		if ($sheet->freeze_rows && $sheet->freeze_columns) {
@@ -174,21 +182,37 @@ class XLSXWriter
 		$sheet->file_writer->write(    '</sheetView>');
 		$sheet->file_writer->write(  '</sheetViews>');
 		$sheet->file_writer->write(  '<cols>');
-		$i=0;
+
+		$i = 1;
+
 		if (!empty($col_widths)) {
-			foreach($col_widths as $column_width) {
-				$sheet->file_writer->write(  '<col collapsed="false" hidden="false" max="'.($i+1).'" min="'.($i+1).'" style="0" customWidth="true" width="'.floatval($column_width).'"/>');
+			$min = $i;
+			$prev_column_width = floatval(reset($col_widths));
+
+			foreach ($col_widths as $column_width) {
+				$col_width = floatval($column_width);
+
+				if ($col_width !== $prev_column_width) {
+					$sheet->file_writer->write('<col collapsed="false" hidden="false" min="' . $min . '" max="' . ($i - 1) . '" style="0" customWidth="true" width="' . $prev_column_width . '"/>');
+					$min = $i;
+					$prev_column_width = $col_width;
+				}
+
 				$i++;
 			}
+
+			$sheet->file_writer->write('<col collapsed="false" hidden="false" min="' . $min . '" max="' . ($i - 1) . '" style="0" customWidth="true" width="' . $prev_column_width . '"/>');
 		}
+
 		if ($i < 1024) {
-			$sheet->file_writer->write(  '<col collapsed="false" hidden="false" max="1024" min="'.($i+1).'" style="0" customWidth="false" width="11.5"/>');
-		}
+      $sheet->file_writer->write('<col collapsed="false" hidden="false" min="' . $i . '" max="1024" style="0" customWidth="false" width="11.5"/>');
+    }
+
 		$sheet->file_writer->write(  '</cols>');
 		$sheet->file_writer->write(  '<sheetData>');
 	}
 
-	private function addCellStyle($number_format, $cell_style_string)
+	public function addCellStyle($number_format, $cell_style_string)
 	{
 		$key = $number_format . $cell_style_string;
 		if (isset($this->number_format_style_idxs[$key])) {
@@ -224,7 +248,7 @@ class XLSXWriter
         $sheet->columns = $this->initializeColumnTypes($types);
     }
 
-	public function writeSheetHeader($sheet_name, array $header_types, $col_options = null)
+	public function writeSheetHeader($sheet_name, array $header_types, $col_options = null, $max_cell = null)
 	{
 		if (empty($sheet_name) || empty($header_types) || !empty($this->sheets[$sheet_name]))
 			return;
@@ -241,12 +265,12 @@ class XLSXWriter
 		$auto_filter = isset($col_options['auto_filter']) ? intval($col_options['auto_filter']) : false;
 		$freeze_rows = isset($col_options['freeze_rows']) ? intval($col_options['freeze_rows']) : false;
 		$freeze_columns = isset($col_options['freeze_columns']) ? intval($col_options['freeze_columns']) : false;
-		self::initializeSheet($sheet_name, $col_widths, $auto_filter, $freeze_rows, $freeze_columns);
+		self::initializeSheet($sheet_name, $col_widths, $auto_filter, $freeze_rows, $freeze_columns, $max_cell);
 		$sheet = &$this->sheets[$sheet_name];
 		$sheet->columns = $this->initializeColumnTypes($header_types);
 		if (!$suppress_row)
 		{
-			$header_row = array_keys($header_types);      
+			$header_row = array_keys($header_types);
 
 			$sheet->file_writer->write('<row collapsed="false" customFormat="false" customHeight="false" hidden="false" ht="12.1" outlineLevel="0" r="' . (1) . '">');
 			foreach ($header_row as $c => $v) {
@@ -270,7 +294,7 @@ class XLSXWriter
 			$default_column_types = $this->initializeColumnTypes( array_fill($from=0, $until=count($row), 'GENERAL') );//will map to n_auto
 			$sheet->columns = array_merge((array)$sheet->columns, $default_column_types);
 		}
-		
+
 		if (!empty($row_options))
 		{
 			$ht = isset($row_options['height']) ? floatval($row_options['height']) : 12.1;
@@ -296,6 +320,16 @@ class XLSXWriter
 		$sheet->file_writer->write('</row>');
 		$sheet->row_count++;
 		$this->current_sheet = $sheet_name;
+	}
+
+	public function getFileWriter($sheet_name)
+	{
+		return $this->sheets[$sheet_name]->file_writer;
+	}
+
+	public function incrementSheetRows($sheet_name, $row_count = 1)
+	{
+		$this->sheets[$sheet_name]->row_count += $row_count;
 	}
 
 	public function countSheetRows($sheet_name = '')
@@ -336,10 +370,14 @@ class XLSXWriter
 		$sheet->file_writer->write(    '</headerFooter>');
 		$sheet->file_writer->write('</worksheet>');
 
-		$max_cell_tag = '<dimension ref="A1:' . $max_cell . '"/>';
-		$padding_length = $sheet->max_cell_tag_end - $sheet->max_cell_tag_start - strlen($max_cell_tag);
-		$sheet->file_writer->fseek($sheet->max_cell_tag_start);
-		$sheet->file_writer->write($max_cell_tag.str_repeat(" ", $padding_length));
+		// replace placeholder for max cell if not deffined at the beginning
+		if (!$sheet->max_cell) {
+			$max_cell_tag = '<dimension ref="A1:' . $max_cell . '"/>';
+			$padding_length = $sheet->max_cell_tag_end - $sheet->max_cell_tag_start - strlen($max_cell_tag);
+			$sheet->file_writer->fseek($sheet->max_cell_tag_start);
+			$sheet->file_writer->write($max_cell_tag . str_repeat(" ", $padding_length));
+		}
+
 		$sheet->file_writer->close();
 		$sheet->finalized=true;
 	}
@@ -643,8 +681,8 @@ class XLSXWriter
 		$core_xml.='<dc:creator>'.self::xmlspecialchars($this->author).'</dc:creator>';
 		if (!empty($this->keywords)) {
 			$core_xml.='<cp:keywords>'.self::xmlspecialchars(implode (", ", (array)$this->keywords)).'</cp:keywords>';
-		}		
-		$core_xml.='<dc:description>'.self::xmlspecialchars($this->description).'</dc:description>';		
+		}
+		$core_xml.='<dc:description>'.self::xmlspecialchars($this->description).'</dc:description>';
 		$core_xml.='<cp:revision>0</cp:revision>';
 		$core_xml.='</cp:coreProperties>';
 		return $core_xml;
@@ -765,7 +803,7 @@ class XLSXWriter
 		return str_replace($all_invalids, "", $filename);
 	}
 	//------------------------------------------------------------------
-	public static function sanitize_sheetname($sheetname) 
+	public static function sanitize_sheetname($sheetname)
 	{
 		static $badchars  = '\\/?*:[]';
 		static $goodchars = '        ';
@@ -915,17 +953,16 @@ class XLSXWriter
 
 class XLSXWriter_BuffererWriter
 {
+	protected $filename = '';
 	protected $fd=null;
 	protected $buffer='';
 	protected $check_utf8=false;
 
 	public function __construct($filename, $fd_fopen_flags='w', $check_utf8=false)
 	{
+		$this->filename = $filename;
 		$this->check_utf8 = $check_utf8;
-		$this->fd = fopen($filename, $fd_fopen_flags);
-		if ($this->fd===false) {
-			XLSXWriter::log("Unable to open $filename for writing.");
-		}
+		$this->open($fd_fopen_flags);
 	}
 
 	public function write($string)
@@ -933,6 +970,25 @@ class XLSXWriter_BuffererWriter
 		$this->buffer.=$string;
 		if (isset($this->buffer[8191])) {
 			$this->purge();
+		}
+	}
+
+	public function getFilename()
+	{
+		return $this->filename;
+	}
+
+	public function reOpen()
+	{
+		$this->open('a');
+	}
+
+	protected function open($fd_fopen_flags)
+	{
+		$this->fd = fopen($this->filename, $fd_fopen_flags);
+
+		if ($this->fd===false) {
+			XLSXWriter::log("Unable to open $this->filename for writing.");
 		}
 	}
 
