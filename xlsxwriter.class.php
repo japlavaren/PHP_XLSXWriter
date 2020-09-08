@@ -334,7 +334,7 @@ class XLSXWriter
 
 	public function countSheetRows($sheet_name = '')
 	{
-		$sheet_name = $sheet_name ?: $this->current_sheet;
+		$sheet_name = $sheet_name ? $sheet_name : $this->current_sheet;
 		return array_key_exists($sheet_name, $this->sheets) ? $this->sheets[$sheet_name]->row_count : 0;
 	}
 
@@ -416,7 +416,7 @@ class XLSXWriter
 
 		if (!is_scalar($value) || $value==='') { //objects, array, empty
 			$file->write('<c r="'.$cell_name.'" s="'.$cell_style_idx.'"/>');
-		} elseif (is_string($value) && $value{0}=='='){
+		} elseif (is_string($value) && $value[0]=='='){
 			$file->write('<c r="'.$cell_name.'" s="'.$cell_style_idx.'" t="s"><f>'.self::xmlspecialchars($value).'</f></c>');
 		} elseif ($num_format_type=='n_date') {
 			$file->write('<c r="'.$cell_name.'" s="'.$cell_style_idx.'" t="n"><v>'.intval(self::convert_date_time($value)).'</v></c>');
